@@ -60,6 +60,10 @@ impl DB {
         self.transaction_index.insert(tx, idx);
     }
 
+    pub fn describe_accounts(&self) -> String {
+        self.accounts.iter().map(|(_, acc)| format!("{:?}", acc)).collect::<Vec<String>>().join("\n")
+    }
+
     fn push_transaction(&mut self, t: Transaction) {
         
         match t.r#type {
@@ -228,6 +232,7 @@ impl fmt::Display for AccountError {
 
 
 // Reconsider which value of total/available/held should be present
+#[derive(Debug)]
 pub struct Account {
     id: u16,
     locked: bool,
@@ -421,9 +426,11 @@ fn main() {
     let allowed_dist = Decimal::MAX - x;
     println!("Hello, world! {} - {}  allowed: {}      {}, {}, {}", x.to_string(), Decimal::MAX.to_string(), allowed_dist.to_string(), y, allowed_dist * dec!(10000), dec!(0.5) == dec!(0.5));
     println!("{}, {}",  u32::MAX, usize::MAX);
+
+    let mut db = DB::new();
     
     let f = File::open("transactions.csv").unwrap();
-    let mut reader = BufReader::new(f);
+    let reader = BufReader::new(f);
 
     let mut rdr = csv::Reader::from_reader(reader);
     for result in rdr.deserialize() {
@@ -431,7 +438,11 @@ fn main() {
         // error here.
         let record: Transaction = result.unwrap();
         println!("{:?}", record);
+        if let Err(e) = db.process_new_transaction(record) {
+            println!("E: {:?}", e);
+        }
     }
 
+    println!("{}", db.describe_accounts());
     
 }
