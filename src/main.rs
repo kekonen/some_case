@@ -24,6 +24,8 @@ pub enum DBError {
     AccountNotFound,
     TransactionNotFound,
     TransactionIsSubjectOfDispute,
+    TransactionIsNotSubjectOfDispute,
+    TransactionTypeNotExists,
 }
 
 impl fmt::Display for DBError {
@@ -162,13 +164,50 @@ impl DB {
                 }
             },
             TransactionType::Resolve => {
-                Ok(())
+                let exists_and_is_subject_of_dispute = self.transaction_exists_and_not_subject_of_dispute(&t.tx);
+
+                if let Some(subject_of_dispute) = exists_and_is_subject_of_dispute {
+                    if !subject_of_dispute {
+                        Err(DBError::TransactionIsNotSubjectOfDispute)
+                    } else {
+                        let amount = self.get_transaction_by_tx(&t.tx).expect("transaction_exists").amount.expect("Tested the amount (Deposit, Withdrawal) when was adding to self.transaction_index");
+                        if let Some(account) = self.get_account_mut(t.client) {
+                            if let Err(account_error) = account.resolve(amount) {
+                                Err(DBError::AccountError(account_error))
+                            } else {
+                                self.get_transaction_by_tx_mut(&t.tx).map(|t| t.stop_dispute());
+                                Ok(())
+                            }
+                        } else {
+                            Err(DBError::AccountNotFound)
+                        }
+                    }
+                } else {
+                    Err(DBError::TransactionNotFound)
+                }
             },
             TransactionType::Chargeback => {
-                Ok(())
-            },
-            _ => {
-                Ok(())
+                let exists_and_is_subject_of_dispute = self.transaction_exists_and_not_subject_of_dispute(&t.tx);
+
+                if let Some(subject_of_dispute) = exists_and_is_subject_of_dispute {
+                    if !subject_of_dispute {
+                        Err(DBError::TransactionIsNotSubjectOfDispute)
+                    } else {
+                        let amount = self.get_transaction_by_tx(&t.tx).expect("transaction_exists").amount.expect("Tested the amount (Deposit, Withdrawal) when was adding to self.transaction_index");
+                        if let Some(account) = self.get_account_mut(t.client) {
+                            if let Err(account_error) = account.chargeback(amount) {
+                                Err(DBError::AccountError(account_error))
+                            } else {
+                                self.get_transaction_by_tx_mut(&t.tx).map(|t| t.stop_dispute());
+                                Ok(())
+                            }
+                        } else {
+                            Err(DBError::AccountNotFound)
+                        }
+                    }
+                } else {
+                    Err(DBError::TransactionNotFound)
+                }
             }
         };
         if result.is_ok() {
@@ -210,7 +249,7 @@ impl Transaction {
         self.subject_of_dispute = true
     }
 
-    pub fn end_dispute(&mut self) {
+    pub fn stop_dispute(&mut self) {
         self.subject_of_dispute = false
     }
 }
@@ -433,13 +472,15 @@ fn main() {
     let reader = BufReader::new(f);
 
     let mut rdr = csv::Reader::from_reader(reader);
-    for result in rdr.deserialize() {
-        // The iterator yields Result<StringRecord, Error>, so we check the
-        // error here.
-        let record: Transaction = result.unwrap();
-        println!("{:?}", record);
-        if let Err(e) = db.process_new_transaction(record) {
-            println!("E: {:?}", e);
+    for result in rdr.deserialize::<Transaction>() {
+        match result {
+            Ok(record) => {
+                println!("{:?}", record);
+                if let Err(e) = db.process_new_transaction(record) {
+                    println!("E: {:?}", e);
+                }
+            },
+            Err(e) => println!("E: {:?}", e),
         }
     }
 
