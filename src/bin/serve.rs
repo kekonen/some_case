@@ -5,7 +5,6 @@
 // #[macro_use]
 // extern crate serde_derive;
 
-use std::io;
 
 
 // pub mod crate::db;
@@ -14,18 +13,17 @@ use case::db::{Db, DBError};
 use case::db::transaction::Transaction;
 
 use std::sync::{Arc, Mutex};
-use std::rc::{Rc};
 
 use warp::Filter;
 
 #[derive(Clone)]
 struct Router {
-    n: u8,
+    n: u16,
     dbs: Vec<Arc<Mutex<Db>>>
 }
 
 impl Router {
-    pub fn new(n: u8) -> Self {
+    pub fn new(n: u16) -> Self {
         Self {
             n,
             dbs: (0..n).map(|_| Arc::new(Mutex::new(Db::new()))).collect::<Vec<_>>(),
@@ -33,7 +31,7 @@ impl Router {
     }
 
     pub fn process(&self, t: Transaction) -> Option<DBError> {
-        let n_to_access = (t.client() % self.n as u16) as usize;
+        let n_to_access = (t.client() % self.n) as usize;
         if let Some(db) = self.dbs.get(n_to_access) {
             let mut db = db.lock().unwrap();
             println!("accounts: {}", db.describe_accounts());
@@ -104,7 +102,7 @@ async fn main() {
     // warp::serve(hello)
     //     .run(([127, 0, 0, 1], 3030))
     //     .await;
-    let router = Router::new(3);
+    let router = Router::new(3000);
     // let router = Arc::new(Router::new(3));
 
 
