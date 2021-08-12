@@ -8,11 +8,10 @@
 use std::io;
 
 
-pub mod db;
-pub mod fuzzing;
+// pub mod crate::db;
 
-use db::Db;
-use db::transaction::Transaction;
+use case::db::Db;
+use case::db::transaction::Transaction;
 
 
 
