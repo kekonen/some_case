@@ -61,4 +61,10 @@ impl Transaction {
     pub fn get_type(&self) -> &TransactionType {
         &self.r#type
     }
+
+    pub fn fix(&mut self) {
+        if let Some(ref mut amount) = &mut self.amount {
+            *amount = amount.round_dp(4)
+        }
+    }
 }

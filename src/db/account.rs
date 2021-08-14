@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use crate::db::transaction::Transaction;
 
-
+const REAL_MAX: Decimal = dec!(7922816251426433759354396); // Decimal::MAX / 10^4
 
 type Monetary = Decimal;
 
@@ -120,7 +120,7 @@ impl Account {
         if amount < dec!(0) {
             Some(AccountError::NegativeAmount)
         } else {
-            let allowed_amount = Decimal::MAX - self.total_amount();
+            let allowed_amount = REAL_MAX - self.total_amount(); // Not Decimal::MAX, but Decimal::MAX / 10^4, because even though we won't get overflow immediately, still the digits after floating point will be eaten. As we want to support 4 digits after the point, we need 10^4
             if amount > allowed_amount {
                 Some(AccountError::TooMuch(allowed_amount))
             } else {

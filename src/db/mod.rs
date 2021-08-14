@@ -135,12 +135,16 @@ impl Db {
     //     self.get_transaction_by_tx(tx).map(|t| t.subject_of_dispute)
     // }
 
-    pub fn process_new_transaction(&mut self, t: Transaction) -> Option<DBError> {
+    pub fn process_new_transaction(&mut self, mut t: Transaction) -> Option<DBError> {
+
+        // t.fix();
 
         let try_account = if let Some(account) = self.get_account_mut(&t.client()) {
             Ok(account)
         } else {
             if t.get_type() == &TransactionType::Deposit {
+
+                // Assumption: "There are multiple clients. Transactions reference clients. If a client doesn't exist create a new record;" - no need to create the client, unless deposit for him exists, because all other ops are done witht the deposit
                 let account = Account::empty(t.client());
                 Ok(self.add_account(account))
             } else {
