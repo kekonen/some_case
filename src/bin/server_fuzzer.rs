@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for t_i in 0..5 {
         // Spin up another thread
         children.push(thread::spawn(move || {
-            let mut rt = Runtime::new().unwrap();
+            let rt = Runtime::new().unwrap();
 
             rt.block_on(async move {
                 let client = Client::new();
