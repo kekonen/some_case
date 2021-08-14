@@ -1,52 +1,84 @@
 use case::fuzzing::gen_json;
 use hyper::{Body, Method, Request, Uri, Client};
 use std::thread;
+use futures::future::join_all;
+use chrono::prelude::*;
 
 use tokio::runtime::Runtime;
 use tokio::time::*;
 
+
+async fn make_requests(t_i: u64, n: u64) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = Client::new();
+
+    let mut rng = rand::thread_rng();
+    for i in 0..n {
+        // Await the response...
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("http://127.0.0.1:3030/hello")
+            .header("content-type", "application/json")
+            .body(Body::from(gen_json(&mut rng))).unwrap();
+        let resp = client.request(req).await.unwrap();
+
+        // println!("{}-{} Response: {}", t_i, i, resp.status());
+    }
+
+    Ok(())
+}
+
+async fn make_requests_calc(t_i: u64, n: u64) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = Client::new();
+
+    let mut rng = rand::thread_rng();
+    let start: DateTime<Local> = Local::now();
+    for i in 0..n {
+        // Await the response...
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("http://127.0.0.1:3030/hello")
+            .header("content-type", "application/json")
+            .body(Body::from(gen_json(&mut rng))).unwrap();
+        let resp = client.request(req).await.unwrap();
+
+        if i % 1024*32 == 0 && i != 0 {
+            let elapsed = Local::now()-start;
+
+            let microsec = elapsed.num_microseconds().unwrap() / i as i64;
+
+            println!("{} -> {:.6} sec/req at i {}", t_i, microsec as f64 / 1000000.0, i);
+        }
+        // println!("{}-{} Response: {}", t_i, i, resp.status());
+        // println!("{}-{} Response: {}", t_i, i, resp.status());
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // This is where we will setup our HTTP client requests.
+
+    let calculated = true;
 
     let mut children = vec![];
+    let parallel = 128;
+    let n = 1024*1024;
+    let start: DateTime<Local> = Local::now();
 
-    for t_i in 0..5 {
-        // Spin up another thread
-        children.push(thread::spawn(move || {
-            let rt = Runtime::new().unwrap();
+    for t_i in 0..parallel {
 
-            rt.block_on(async move {
-                let client = Client::new();
-
-                // Parse an `http::Uri`...
-                // let uri = "http://127.0.0.1:3030/hello".parse()?;
-
-                
-
-                let mut rng = rand::thread_rng();
-                for i in 0..30000000_u64 {
-                    // Await the response...
-                    let req = Request::builder()
-                        .method(Method::POST)
-                        .uri("http://127.0.0.1:3030/hello")
-                        .header("content-type", "application/json")
-                        .body(Body::from(gen_json(&mut rng))).unwrap();
-                    let resp = client.request(req).await.unwrap();
-
-                    println!("{}-{} Response: {}", t_i, i, resp.status());
-                }
-            });
-            
-        }));
+        children.push(make_requests_calc(t_i, n/parallel));
+        
+        
     }
 
-    for child in children {
-        // Wait for the thread to finish. Returns a result.
-        let _ = child.join();
-    }
+    join_all(children).await;
 
-    
+    let elapsed = Local::now()-start;
+
+    let microsec = elapsed.num_microseconds().unwrap() / n as i64;
+
+    println!("{:.5} sec/req with {}x{}", microsec as f64 / 1000000.0, n, parallel);
 
     Ok(())
 }
@@ -56,3 +88,110 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 // }
 
 // 2400/s
+// ./target/release/server_fuzzer  1,54s user 1,27s system 13% cpu 21,254 total async 20
+// ./target/release/server_fuzzer  1,88s user 1,73s system 15% cpu 23,449 total thread 20
+// ./target/release/server_fuzzer  0,16s user 0,15s system 12% cpu 2,520 total thread 2
+// ./target/release/server_fuzzer  0,13s user 0,14s system 11% cpu 2,439 total async 2
+// ./target/release/server_fuzzer  0,06s user 0,08s system 10% cpu 1,368 total 1024x8
+
+// 0.00154 sec/req with 1024x8
+// ./target/release/server_fuzzer  0,08s user 0,07s system 9% cpu 1,577 total
+
+
+// 0.00144 sec/req with 1024x1
+// ./target/release/server_fuzzer  0,09s user 0,05s system 9% cpu 1,482 total
+
+
+
+// 0 -> 0.000359 sec/req at i 62464
+// 0 -> 0.000360 sec/req at i 63488
+// 0 -> 0.000362 sec/req at i 64512
+// 0.00036 sec/req with 65536x1
+// ./target/release/server_fuzzer  3,73s user 3,67s system 30% cpu 23,887 total
+
+
+// 0 -> 0.000512 sec/req at i 30720
+// 1 -> 0.000513 sec/req at i 30720
+// 0 -> 0.000523 sec/req at i 31744
+// 1 -> 0.000524 sec/req at i 31744
+// 0.00027 sec/req with 65536x2
+// ./target/release/server_fuzzer  3,30s user 3,25s system 37% cpu 17,538 total
+
+
+// 0 -> 0.000927 sec/req at i 14336
+// 1 -> 0.000930 sec/req at i 14336
+// 2 -> 0.000934 sec/req at i 14336
+// 3 -> 0.000934 sec/req at i 14336
+// 0 -> 0.000975 sec/req at i 15360
+// 1 -> 0.000978 sec/req at i 15360
+// 2 -> 0.000982 sec/req at i 15360
+// 3 -> 0.000982 sec/req at i 15360
+// 0.00026 sec/req with 65536x4
+// ./target/release/server_fuzzer  3,35s user 3,11s system 38% cpu 16,781 total
+
+
+
+// 0 -> 0.000769 sec/req at i 6144
+// 6 -> 0.000774 sec/req at i 6144
+// 7 -> 0.000776 sec/req at i 6144
+// 2 -> 0.000770 sec/req at i 7168
+// 1 -> 0.000770 sec/req at i 7168
+// 4 -> 0.000772 sec/req at i 7168
+// 3 -> 0.000772 sec/req at i 7168
+// 0 -> 0.000775 sec/req at i 7168
+// 5 -> 0.000776 sec/req at i 7168
+// 6 -> 0.000778 sec/req at i 7168
+// 7 -> 0.000779 sec/req at i 7168
+// 0.00010 sec/req with 65536x8
+// ./target/release/server_fuzzer  2,86s user 2,47s system 84% cpu 6,287 total
+
+// 0 -> 0.000288 sec/req at i 31744
+// 1 -> 0.000288 sec/req at i 31744
+// 0.00014 sec/req with 65536x2
+// ./target/release/server_fuzzer  2,79s user 2,76s system 58% cpu 9,456 total
+
+// 0.00010 sec/req with 65536x64
+// ./target/release/server_fuzzer  3,62s user 3,21s system 109% cpu 6,243 total
+
+// 0.00010 sec/req with 65536x16
+// ./target/release/server_fuzzer  2,64s user 2,46s system 80% cpu 6,346 total
+
+// 0.00009 sec/req with 65536x8
+// ./target/release/server_fuzzer  2,56s user 2,67s system 84% cpu 6,197 total
+
+// 0.00010 sec/req with 65536x4
+// ./target/release/server_fuzzer  2,74s user 2,63s system 84% cpu 6,369 total
+
+// 0.00014 sec/req with 65536x2
+// ./target/release/server_fuzzer  2,75s user 2,96s system 60% cpu 9,396 total
+
+
+
+// 0.00010 sec/req with 1048576x4 with 3000 server split
+// ./target/release/server_fuzzer  43,50s user 43,45s system 83% cpu 1:43,95 total
+
+
+// 0.00008 sec/req with 1048576x4 with 2048 server split
+// ./target/release/server_fuzzer  44,90s user 42,27s system 107% cpu 1:21,38 total
+
+
+// 0.00005 sec/req with 1048576x4 with 1024 server split
+// ./target/release/server_fuzzer  41,78s user 40,23s system 160% cpu 51,011 total
+
+// 0.00003 sec/req with 1048576x4 with 128 server split
+// ./target/release/server_fuzzer  37,80s user 32,42s system 262% cpu 26,797 total
+
+// 0.00002 sec/req with 1048576x4 with 32 server split
+// ./target/release/server_fuzzer  37,24s user 32,09s system 277% cpu 25,011 total
+
+// 0.00002 sec/req with 1048576x4 with 2 server split
+// ./target/release/server_fuzzer  37,43s user 32,05s system 279% cpu 24,829 total
+
+// 0.00002 sec/req with 1048576x4 with no split
+// ./target/release/server_fuzzer  37,13s user 30,76s system 279% cpu 24,264 total
+
+// 0.00001 sec/req with 1048576x16 with no split
+// ./target/release/server_fuzzer  24,43s user 19,20s system 429% cpu 10,155 total
+
+// 0.00001 sec/req with 1048576x128 with no split
+// ./target/release/server_fuzzer  27,17s user 20,67s system 431% cpu 11,089 total

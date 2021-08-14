@@ -18,27 +18,20 @@ use warp::Filter;
 
 #[derive(Clone)]
 struct Router {
-    n: u16,
-    dbs: Vec<Arc<Mutex<Db>>>
+    db: Arc<Mutex<Db>>
 }
 
 impl Router {
-    pub fn new(n: u16) -> Self {
+    pub fn new() -> Self {
         Self {
-            n,
-            dbs: (0..n).map(|_| Arc::new(Mutex::new(Db::new()))).collect::<Vec<_>>(),
+            db: Arc::new(Mutex::new(Db::new()))
         }
     }
 
     pub fn process(&self, t: Transaction) -> Option<DBError> {
-        let n_to_access = (t.client() % self.n) as usize;
-        if let Some(db) = self.dbs.get(n_to_access) {
-            let mut db = db.lock().unwrap();
-            println!("accounts: {}", db.describe_accounts());
+        let mut db = self.db.lock().unwrap();
+            // println!("accounts: {}", db.describe_accounts());
             db.process_new_transaction(t)
-        } else {
-            None
-        }
     }
 }
 
@@ -102,12 +95,14 @@ async fn main() {
     // warp::serve(hello)
     //     .run(([127, 0, 0, 1], 3030))
     //     .await;
-    let router = Router::new(3000);
+    let router = Router::new();
     // let router = Arc::new(Router::new(3));
 
 
 
     let with_state = warp::any().map(move || router.clone());
+
+    let debug = false;
 
 
 
@@ -115,14 +110,19 @@ async fn main() {
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
         .and(with_state)
-        .map(|record: Transaction, db: Router| {
-            println!("{:?}", record);
+        .map(move |record: Transaction, db: Router| {
+            if debug {
+                println!("{:?}", record);
+            }
 
             if let Some(e) = db.process(record.clone()) {
-                println!("ERROR: {:?}", e);
+                if debug {
+                    println!("ERROR: {:?}", e);
+                }
             }
 
             "Got a JSON body!"
+            // warp::reply()
         });
         // .map(|name| format!("Hello, {}!", name));
 
