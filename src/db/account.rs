@@ -150,6 +150,8 @@ impl Account {
     fn test_available(&self, amount: Monetary) -> Option<AccountError> {
         if amount < dec!(0) {
             Some(AccountError::NegativeAmount)
+        } else if amount > REAL_MAX {
+            Some(AccountError::NegativeAmount)
         } else {
             let allowed_amount = self.available_amount();
             if amount > allowed_amount {
