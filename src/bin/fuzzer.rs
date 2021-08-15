@@ -2,7 +2,7 @@ use case::fuzzing::gen_json;
 use hyper::{Body, Method, Request, Client};
 use futures::future::join_all;
 use chrono::prelude::*;
-use case::fuzzing::gen_line;
+use case::fuzzing::{gen_line, gen_money};
 
 
 extern crate clap;
@@ -118,18 +118,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             )
         .get_matches();
 
-
     match matches.subcommand() {
         ("server",  Some(sub_m)) => {
             let n: u64 = sub_m.value_of("requests").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1024*128);
-            let concurrent: u64 = sub_m.value_of("concurrent").and_then(|s| s.parse::<u64>().ok()).unwrap_or(128); // 128
+            let concurrent: u64 = sub_m.value_of("concurrent").and_then(|s| s.parse().ok()).unwrap_or(128); // 128
             let statistics: bool = sub_m.is_present("statistics");
             let url: &str = sub_m.value_of("url").expect("Setup the default value, so it should exist");
             
             run_server_fuzz(url, n, concurrent, statistics).await
         },
         ("csv",   Some(sub_m)) => {
-            let n: u64 = sub_m.value_of("requests").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1024*128);
+            let n: u64 = sub_m.value_of("lines").and_then(|s| s.parse::<u64>().ok()).unwrap_or(1024*128);
             gen_lines(n);
             Ok(())
         },
@@ -137,34 +136,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Ok(())
         },
     }
-
-    // let statistics = true;
-
-    // let concurrent: u64 = args.get(1).expect("Please provide "); // 128
-    // let n: u64 = args.get(2).expect("Please provide "); // 1024*1024
-    // let start: DateTime<Local> = Local::now();
-
-    // let mut children = vec![];
-
-    // for t_i in 0..concurrent {
-    //     children.push(make_requests(t_i, n/concurrent, statistics));
-    // }
-
-    // join_all(children).await;
-
-    // let elapsed = Local::now()-start;
-
-    // let microsec = elapsed.num_microseconds().unwrap() / n as i64;
-    // let sec = microsec as f64 / 1000000.0;
-
-    // println!("{:.5} sec/req with {}x{}", sec, n, concurrent);
-
-    // Ok(())
 }
 
-// fn main() {
-    
-// }
 
 // 2400/s
 // ./target/release/server_fuzzer  1,54s user 1,27s system 13% cpu 21,254 total async 20

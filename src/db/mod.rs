@@ -4,11 +4,7 @@ pub mod transaction;
 use transaction::{Transaction, TransactionType};
 
 use std::fmt;
-
-
 use std::collections::HashMap;
-
-
 use account::{Account, AccountError};
 
 
@@ -22,7 +18,7 @@ impl fmt::Display for DBError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DBError::AccountError(e) => {
-                write!(f, "Error during processing the transaction by the account:");
+                write!(f, "Error during processing the transaction by the account:")?;
                 e.fmt(f)
             },
             DBError::AccountNotFound => {
@@ -53,7 +49,6 @@ impl Db {
     fn add_account(&mut self, account: Account) {
         let id = account.get_id();
         self.accounts.insert(id, account);
-        // self.accounts.get_mut(&id).expect("Just added")
     }
 
     fn get_account_mut(&mut self, id: &u16) -> Option<&mut Account> {
@@ -84,3 +79,12 @@ impl Db {
 }
 
 
+impl fmt::Display for Db {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "client, available, held, total, locked\n")?;
+        for account in self.accounts.values() {
+            write!(f, "{}", account)?;
+        }
+        Ok(())
+    }
+}

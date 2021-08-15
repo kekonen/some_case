@@ -77,6 +77,20 @@ pub struct Account {
     transactions: RefCell<HashMap<u32, Transaction>>,
 }
 
+impl fmt::Display for Account {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}, {:.4}, {:.4}, {:.4}, {}\n",
+            self.get_id(),
+            self.available_amount(),
+            self.held_amount(),
+            self.total_amount(),
+            self.is_locked(),
+        )?;
+
+        Ok(())
+    }
+}
+
 impl Account {
 
     pub fn new(id: u16, locked: bool, available: Monetary, held: Monetary) -> Self {

@@ -37,9 +37,15 @@ pub fn gen_tx(rng: &mut ThreadRng) -> String {
 pub fn gen_money(rng: &mut ThreadRng) -> String {
     let correct: bool = rng.gen::<f64>() > 0.01;
     if correct {
-        (rng.gen::<f64>() * rng.gen::<i64>() as f64).to_string()
+        format!("{:.4}", rng.gen::<f64>() * rng.gen_range(0..2_000_000_000) as f64)
     } else {
-        rand_string(rng)
+        match rng.gen_range(0..=3) {
+            0 => rand_string(rng),
+            1 => "".to_string(),
+            2 => (rng.gen::<f64>() * rng.gen_range(-2_147_483_648..=2_147_483_647) as f64).to_string(),
+            3 => (rng.gen::<f64>() * rng.gen_range(i64::MIN..i64::MAX) as f64).to_string(),
+            _ => {"".to_string()}
+        }        
     }
 }
 
