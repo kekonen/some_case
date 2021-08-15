@@ -258,6 +258,63 @@ impl Account {
     }
 
 
+    fn try_perform_with_transaction<F>(&self, tx: u32, f: F) -> Result<(), AccountError> 
+    where F: FnOnce(&mut Transaction) -> Result<(), AccountError>  {
+        let mut self_transactions = self.transactions.borrow_mut();
+        let transaction = self_transactions.get_mut(&tx).ok_or(AccountError::TransactionNotFound)?;
+
+        f(transaction)
+    }
+
+    pub fn try_dispute(&mut self, t: Transaction) -> Result<(), AccountError> {
+
+        self.try_perform_with_transaction(t.tx(), 
+            |transaction| {
+                if transaction.is_subject_of_dispute() {
+                    return Err(AccountError::TransactionIsSubjectOfDispute)
+                }
+        
+                let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+                self.dispute(amount)?;
+                transaction.start_dispute();
+                Ok(())
+            }
+        )
+    }
+
+    pub fn try_resolve(&mut self, t: Transaction) -> Result<(), AccountError> {
+
+        self.try_perform_with_transaction(t.tx(), 
+            |transaction| {
+                if transaction.is_not_subject_of_dispute() {
+                    return Err(AccountError::TransactionIsNotSubjectOfDispute)
+                }
+
+                let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+                self.resolve(amount)?;
+                transaction.stop_dispute();
+                Ok(())  
+            }
+        )
+    }
+
+    pub fn try_chargeback(&mut self, t: Transaction) -> Result<(), AccountError> {
+
+        self.try_perform_with_transaction(t.tx(), 
+            |transaction| {
+                if transaction.is_not_subject_of_dispute() {
+                    return Err(AccountError::TransactionIsNotSubjectOfDispute)
+                }
+
+                let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+                self.chargeback(amount)?;
+                transaction.stop_dispute();
+                Ok(())  
+            }
+        )
+    }
+
+
     /// Credits the amount, if not possible returns the available amount (like if there is an overflow)
     pub fn try_deposit(&mut self, t: Transaction) -> Result<(), AccountError> {
 
@@ -283,7 +340,7 @@ impl Account {
         Ok(())
     }
 
-    pub fn try_dispute(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_dispute_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
 
         let mut self_transactions = self.transactions.borrow_mut();
         let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
@@ -298,7 +355,7 @@ impl Account {
         Ok(())
     }
 
-    pub fn try_resolve(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_resolve_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
 
         let mut self_transactions = self.transactions.borrow_mut();
         let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
@@ -314,7 +371,7 @@ impl Account {
     }
 
 
-    pub fn try_chargeback(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_chargeback_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
         let mut self_transactions = self.transactions.borrow_mut();
         let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
 
