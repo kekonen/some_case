@@ -57,10 +57,10 @@ async fn run_server(port: u16, verbose: bool) {
 
     let with_state = warp::any().map(move || db.clone());
 
-    let index = warp::any()
+    let post = warp::post()
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
-        .and(with_state)
+        .and(with_state.clone())
         .map(move |record: Transaction, db: Arc<Mutex<Db>>| {
             if verbose {
                 println!("{:?}", record);
@@ -76,7 +76,21 @@ async fn run_server(port: u16, verbose: bool) {
             }
         });
 
-    warp::serve(index)
+
+    let get = warp::get()
+        .and(with_state)
+        .map(move |db: Arc<Mutex<Db>>| {
+            match db.lock() {
+                Ok(db) => {
+                    format!("{}",db)
+                },
+                Err(e) => format!("poison error: {}", e)
+            }
+        });
+
+    let routes = post.or(get);
+
+    warp::serve(routes)
         .run(([127, 0, 0, 1], port))
         .await
 }
