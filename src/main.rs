@@ -35,7 +35,7 @@ fn main() {
         match result {
             Ok(record) => {
                 if verbose {println!("{:?}", record)}
-                if let Some(e) = db.process_new_transaction(record) {
+                if let Err(e) = db.process_new_transaction(record) {
                     if verbose {println!("E: {:?}", e)}
                 }
             },

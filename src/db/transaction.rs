@@ -50,6 +50,10 @@ impl Transaction {
         self.subject_of_dispute
     }
 
+    pub fn is_not_subject_of_dispute(&self) -> bool {
+        !self.subject_of_dispute
+    }
+
     pub fn tx(&self) -> u32 {
         self.tx
     }
@@ -60,6 +64,14 @@ impl Transaction {
 
     pub fn get_type(&self) -> &TransactionType {
         &self.r#type
+    }
+
+    pub fn has_client(&self, client_id: u16) -> bool {
+        self.client() == client_id
+    }
+
+    pub fn different_client(&self, client_id: u16) -> bool {
+        !self.has_client(client_id)
     }
 
     pub fn fix(&mut self) {

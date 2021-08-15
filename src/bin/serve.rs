@@ -28,7 +28,7 @@ impl Router {
         }
     }
 
-    pub fn process(&self, t: Transaction) -> Option<DBError> {
+    pub fn process(&self, t: Transaction) -> Result<(), DBError> {
         let mut db = self.db.lock().unwrap();
             // println!("accounts: {}", db.describe_accounts());
             db.process_new_transaction(t)
@@ -115,7 +115,7 @@ async fn main() {
                 println!("{:?}", record);
             }
 
-            if let Some(e) = db.process(record.clone()) {
+            if let Err(e) = db.process(record.clone()) {
                 if debug {
                     println!("ERROR: {:?}", e);
                 }

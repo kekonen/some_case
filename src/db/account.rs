@@ -7,30 +7,63 @@ use std::fmt;
 // extern crate serde_derive;
 use std::collections::HashMap;
 
-use crate::db::transaction::Transaction;
+use crate::db::transaction::{Transaction, TransactionType};
 
-const REAL_MAX: Decimal = dec!(7922816251426433759354396); // Decimal::MAX / 10^4
+const REALLY_REALLY_REALLY_REALLY_A_LOOOOOT: Decimal = dec!(7922816251426433759354396); // Decimal::MAX / 10^4
+const ZERO_MONEY: Decimal = dec!(0); // Decimal::MAX / 10^4
 
 type Monetary = Decimal;
 
 
 #[derive(Debug, Clone)]
 pub enum AccountError {
-    NegativeAmount,
     TooMuch(Monetary),
+    NegativeAmount,
     AccountLocked,
     TransactionAlreadyExists,
     TransactionIsEmpty,
     TransactionIsSubjectOfDispute,
+    TransactionIsNotSubjectOfDispute,
     IAmNotTheOwner,
     TransactionNotFound,
 }
 
 impl fmt::Display for AccountError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid first item to double")
+        match self {
+            AccountError::TooMuch(allowed) => {
+                write!(f, "Too much requested, maximum allowed: {}", allowed)
+            },
+            AccountError::NegativeAmount => {
+                write!(f, "Requested negative amount, which is obviously prohibited")
+            },
+            AccountError::AccountLocked => {
+                write!(f, "Account is locked, please contact support team")
+            },
+            AccountError::TransactionAlreadyExists => {
+                write!(f, "Trying to add a deposit or withdrawal transaction with the same TX id")
+            },
+            AccountError::TransactionIsEmpty => {
+                write!(f, "Transaction's ammount is empty. That is odd: this can happen only if dispute-related transactions tries accessing a deposit/withdrawal transaction, which is empty. Just shady")
+            },
+            AccountError::TransactionIsSubjectOfDispute => {
+                write!(f, "Trying to dispute a transaction which is already being disputed")
+            },
+            AccountError::TransactionIsNotSubjectOfDispute => {
+                write!(f, "Trying to resolve dispute of a transaction which is not disputed")
+            },
+            AccountError::IAmNotTheOwner => {
+                write!(f, "Object and subject transactions have different owners")
+            },
+            AccountError::TransactionNotFound => {
+                write!(f, "Requested transaction not found")
+            },
+        }
+        
     }
 }
+
+
 
 
 use std::cell::RefCell;
@@ -61,28 +94,17 @@ impl Account {
     }
 
     pub fn empty(id: u16) -> Self {
-        Self::new(id, false, dec!(0), dec!(0))
-        // Self {
-        //     id,
-        //     locked: false,
-        //     available: RefCell::new(dec!(0)),
-        //     held: RefCell::new(dec!(0)),
-        //     transactions: RefCell::new(HashMap::new()),
-        // }
+        Self::new(id, false, ZERO_MONEY, ZERO_MONEY)
     }
 
-    // pub fn from_deposit(t: Transaction) -> Self {
-    //     let mut h = HashMap::new();
-    //     let client = 
-    //     h.insert(t.tx, t);
-    //     Self {
-    //         id: t.client,
-    //         locked: false,
-    //         available: t.amount.unwrap_or(dec!(0)),
-    //         held: dec!(0),
-    //         transactions: h,
-    //     }
-    // }
+    fn transaction_exists(&self, tx: &u32) -> bool {
+        self.transactions.borrow().contains_key(tx)
+    }
+
+    fn transaction_not_exists(&self, tx: &u32) -> bool {
+        !self.transaction_exists(tx)
+    }
+
 
     pub fn held_amount(&self) -> Monetary {
         *self.held.borrow()
@@ -108,6 +130,17 @@ impl Account {
         *self.locked.borrow_mut() = false
     }
 
+    /// Used to check for an overflow. For instance, when anyone wants to deposit some money,
+    /// it would be great to not overflow.
+    /// Not Decimal::MAX, but Decimal::MAX / 10^4, because even though we won't get an overflow immediately,
+    /// still the digits after floating point will be eaten.
+    /// As we want to support 4 digits after the point, we need at least 10^4.
+    /// Also, it is so big number, that even dropping 10^16 is safe (in context of $$$), as it is super a lot of money, and if someone gets so much,
+    /// we better look at it.
+    pub fn amount_till_overflow(&self) -> Monetary {
+        REALLY_REALLY_REALLY_REALLY_A_LOOOOOT - self.total_amount()
+    }
+
     pub fn describe_transactions(&self) -> String {
         self.transactions.borrow().iter().map(|(_, t)| format!(" + {}", t.describe())).collect::<Vec<String>>().join("\n")
     }
@@ -116,227 +149,191 @@ impl Account {
         format!("id: {}, locked: {}, available: {} + held: {} = {}", self.id, self.is_locked(), self.available_amount(), self.held_amount(), self.total_amount())
     }
 
-    fn test_deposit(&self, amount: Monetary) -> Option<AccountError> {
-        if amount < dec!(0) {
-            Some(AccountError::NegativeAmount)
+    fn test_deposit(&self, amount: Monetary) -> Result<(), AccountError> {
+        if amount < ZERO_MONEY {
+            return Err(AccountError::NegativeAmount)
+        } 
+        let allowed_amount = self.amount_till_overflow();
+        if amount > allowed_amount {
+            Err(AccountError::TooMuch(allowed_amount))
         } else {
-            let allowed_amount = REAL_MAX - self.total_amount(); // Not Decimal::MAX, but Decimal::MAX / 10^4, because even though we won't get overflow immediately, still the digits after floating point will be eaten. As we want to support 4 digits after the point, we need 10^4
-            if amount > allowed_amount {
-                Some(AccountError::TooMuch(allowed_amount))
-            } else {
-                None
-            }
+            Ok(())
+        }
+    }
+
+    fn test_available(&self, amount: Monetary) -> Result<(), AccountError> {
+        if amount < ZERO_MONEY {
+            return Err(AccountError::NegativeAmount)
+        }
+
+        let allowed_amount = self.available_amount();
+        if amount > allowed_amount {
+            Err(AccountError::TooMuch(allowed_amount))
+        } else {
+            Ok(())
         }
     }
 
     /// Credits the amount, if not possible returns the available amount (like if there is an overflow)
-    pub fn try_deposit(&mut self, t: Transaction) -> Option<AccountError> {
+    pub fn try_deposit(&mut self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
-            return Some(AccountError::AccountLocked)
+            return Err(AccountError::AccountLocked)
         }
-        // if self.total + amount > f64::MAX {
-        //     self.total += amount
-        // }
-        let amount = t.amount().expect("tested earlier");
-        if let Some(e) = self.test_deposit(amount) {
-            Some(e)
-        } else {
-            *self.available.borrow_mut() += amount;
-            self.add_transaction(t);
-            None
+
+        if self.transaction_exists(&t.tx()) {
+            return Err(AccountError::TransactionAlreadyExists)
         }
+        
+        let amount = t.amount().ok_or(AccountError::TransactionIsEmpty)?;
+        self.test_deposit(amount)?;
+        *self.available.borrow_mut() += amount;
+        self.add_transaction(t);
+        Ok(())
     }
 
-    fn test_available(&self, amount: Monetary) -> Option<AccountError> {
-        if amount < dec!(0) {
-            Some(AccountError::NegativeAmount)
-        } else if amount > REAL_MAX {
-            Some(AccountError::NegativeAmount)
+    
+
+    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    pub fn try_withdraw(&mut self, t: Transaction) -> Result<(), AccountError> {
+        if self.is_locked() {
+            return Err(AccountError::AccountLocked)
+        }
+
+        if self.transaction_exists(&t.tx()) {
+            return Err(AccountError::TransactionAlreadyExists)
+        }
+
+        let amount = t.amount().ok_or(AccountError::TransactionIsEmpty)?;
+        self.test_available(amount)?;
+        *self.available.borrow_mut() -= amount;
+        self.add_transaction(t);
+        Ok(())
+    }
+
+    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    pub fn held(&self, amount: Monetary) -> Result<(), AccountError> {
+        if self.is_locked() {
+            return Err(AccountError::AccountLocked)
+        }
+        
+        self.test_available(amount)?;
+        *self.available.borrow_mut() -= amount;
+        *self.held.borrow_mut() += amount;
+        Ok(())
+    }
+
+    fn test_held(&self, amount: Monetary) -> Result<(), AccountError> {
+        if amount < ZERO_MONEY {
+            return Err(AccountError::NegativeAmount)
+        }
+        let allowed_amount = self.held_amount();
+        if amount > allowed_amount {
+            Err(AccountError::TooMuch(allowed_amount))
         } else {
-            let allowed_amount = self.available_amount();
-            if amount > allowed_amount {
-                Some(AccountError::TooMuch(allowed_amount))
-            } else {
-                None
-            }
+            Ok(())
         }
     }
 
     /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
-    pub fn try_withdraw(&mut self, t: Transaction) -> Option<AccountError> {
-        if self.is_locked() {
-            return Some(AccountError::AccountLocked)
-        }
-        // if self.total + amount > f64::MAX {
-        //     self.total += amount
-        // }
-        let amount = t.amount().expect("tested earlier");
-        if let Some(e) = self.test_available(amount) {
-            Some(e)
-        } else {
-            *self.available.borrow_mut() -= amount;
-            self.add_transaction(t);
-            None
-        }
+    pub fn resolve(&self, amount: Monetary) -> Result<(), AccountError> {
+
+        self.test_held(amount)?;
+        *self.held.borrow_mut() -= amount;
+        *self.available.borrow_mut() += amount;
+        Ok(())
     }
 
     /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
-    pub fn held(&self, amount: Monetary) -> Option<AccountError> {
+    pub fn chargeback(&self, amount: Monetary) -> Result<(), AccountError> {
+        
+        self.test_held(amount)?;
+        *self.held.borrow_mut() -= amount;
+        self.lock();
+        Ok(())
+    }
+
+    pub fn add_transaction(&mut self, t: Transaction) {
+        self.transactions.borrow_mut().insert(t.tx(), t);
+    }
+
+    pub fn try_dispute(&mut self, t: Transaction) -> Result<(), AccountError> {
+
+        let mut self_transactions = self.transactions.borrow_mut();
+        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
+
+        if transaction.different_client(self.id) {
+            return Err(AccountError::IAmNotTheOwner)
+        }
+
+        if transaction.is_subject_of_dispute() {
+            return Err(AccountError::TransactionIsSubjectOfDispute)
+        }
+
+        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+        self.held(amount)?;
+        transaction.start_dispute();
+        Ok(())
+    }
+
+    pub fn try_resolve(&mut self, t: Transaction) -> Result<(), AccountError> {
+
+        let mut self_transactions = self.transactions.borrow_mut();
+        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
+
+        if transaction.different_client(self.id) {
+            return Err(AccountError::IAmNotTheOwner)
+        }
+
+        if transaction.is_not_subject_of_dispute() {
+            return Err(AccountError::TransactionIsNotSubjectOfDispute)
+        }
+
+        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+        self.resolve(amount)?;
+        transaction.stop_dispute();
+        Ok(())
+    }
+
+
+    pub fn try_chargeback(&mut self, t: Transaction) -> Result<(), AccountError> {
+        let mut self_transactions = self.transactions.borrow_mut();
+        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
+
+        if transaction.different_client(self.id) {
+            return Err(AccountError::IAmNotTheOwner)
+        }
+
+        if transaction.is_not_subject_of_dispute() {
+            return Err(AccountError::TransactionIsNotSubjectOfDispute)
+        }
+
+        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+        self.chargeback(amount)?;
+        transaction.stop_dispute();
+        Ok(())
+    }
+
+    pub fn execute_transaction(&mut self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
-            return Some(AccountError::AccountLocked)
+            return Err(AccountError::AccountLocked)
         }
-        // if self.total + amount > f64::MAX {
-        //     self.total += amount
-        // }
-        if let Some(e) = self.test_available(amount) {
-            Some(e)
-        } else {
-            *self.available.borrow_mut() -= amount;
-            *self.held.borrow_mut() += amount;
-            None
-        }
-    }
 
-    fn test_held(&self, amount: Monetary) -> Option<AccountError> {
-        if amount < dec!(0) {
-            Some(AccountError::NegativeAmount)
-        } else {
-            let allowed_amount = self.held_amount();
-            if amount > allowed_amount {
-                Some(AccountError::TooMuch(allowed_amount))
-            } else {
-                None
+        match t.get_type() {
+            TransactionType::Deposit => {
+                self.try_deposit(t)
+            },
+            TransactionType::Withdrawal => {
+                self.try_withdraw(t)
+            },
+            TransactionType::Dispute => {
+                self.try_dispute(t)
+            },
+            TransactionType::Resolve => {
+                self.try_resolve(t)
+            },
+            TransactionType::Chargeback => {
+                self.try_chargeback(t)
             }
-        }
-    }
-
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
-    pub fn resolve(&self, amount: Monetary) -> Option<AccountError> {
-        if self.is_locked() {
-            return Some(AccountError::AccountLocked)
-        }
-        // if self.total + amount > f64::MAX {
-        //     self.total += amount
-        // }
-        if let Some(e) = self.test_held(amount) {
-            Some(e)
-        } else {
-            *self.held.borrow_mut() -= amount;
-            *self.available.borrow_mut() += amount;
-            None
-        }
-    }
-
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
-    pub fn chargeback(&self, amount: Monetary) -> Option<AccountError> {
-        if self.is_locked() {
-            return Some(AccountError::AccountLocked)
-        }
-        // if self.total + amount > f64::MAX {
-        //     self.total += amount
-        // }
-        if let Some(e) = self.test_held(amount) {
-            Some(e)
-        } else {
-            *self.held.borrow_mut() -= amount;
-            self.lock();
-            None
-        }
-    }
-
-    // pub fn get_transaction_mut(&self, id: &u32) -> Option<&mut Transaction> {
-    //     self.transactions.borrow_mut().get_mut(id)
-    // }
-
-    // pub fn get_transaction(&self, id: &u32) -> Option<&Transaction> {
-    //     self.transactions.get(id)
-    // }
-
-    pub fn add_transaction(&mut self, t: Transaction) -> Option<AccountError> {
-        if self.transactions.borrow().contains_key(&t.tx()) {
-            Some(AccountError::TransactionAlreadyExists)
-        } else {
-            self.transactions.borrow_mut().insert(t.tx(), t);
-            None
-        }
-    }
-
-    pub fn try_dispute(&mut self, t: Transaction) -> Option<AccountError> {
-        if let Some(transaction) = self.transactions.borrow_mut().get_mut(&t.tx()) {
-            if !transaction.is_subject_of_dispute() {
-                if let Some(amount) = transaction.amount() {
-                    // let result = self.held(amount);
-                    // if result.is_none() {
-                    //     transaction.start_dispute();
-                    // }
-                    // result
-                    if let Some(e) = self.held(amount) {
-                        Some(e)
-                    } else {
-                        transaction.start_dispute();
-                        None
-                    }
-                } else {
-                    Some(AccountError::TransactionIsEmpty)
-                }
-            } else {
-                Some(AccountError::TransactionIsSubjectOfDispute)
-            }
-             
-        } else {
-            Some(AccountError::TransactionNotFound)
-        }
-    }
-
-    pub fn try_resolve(&mut self, t: Transaction) -> Option<AccountError> {
-        if let Some(transaction) = self.transactions.borrow_mut().get_mut(&t.tx()) {
-            if transaction.client() == self.id { // This should go to tests
-                if transaction.is_subject_of_dispute() {
-                    if let Some(amount) = transaction.amount() {
-                        if let Some(e) = self.resolve(amount) {
-                            Some(e)
-                        } else {
-                            transaction.stop_dispute();
-                            None
-                        }
-                    } else {
-                        Some(AccountError::TransactionIsEmpty)
-                    }
-                } else {
-                    Some(AccountError::TransactionIsSubjectOfDispute)
-                }
-                
-            } else {
-                Some(AccountError::IAmNotTheOwner)
-            }
-        } else {
-            Some(AccountError::TransactionNotFound)
-        }
-    }
-
-    pub fn try_chargeback(&mut self, t: Transaction) -> Option<AccountError> {
-        if let Some(transaction) = self.transactions.borrow_mut().get_mut(&t.tx()) {
-            if transaction.client() == self.id { // This should go to tests
-                if transaction.is_subject_of_dispute() {
-                    if let Some(amount) = transaction.amount() {
-                        if let Some(e) = self.chargeback(amount) {
-                            Some(e)
-                        } else {
-                            transaction.stop_dispute();
-                            None
-                        }
-                    } else {
-                        Some(AccountError::TransactionIsEmpty)
-                    }
-                } else {
-                    Some(AccountError::TransactionIsSubjectOfDispute)
-                }
-                
-            } else {
-                Some(AccountError::IAmNotTheOwner)
-            }
-        } else {
-            Some(AccountError::TransactionNotFound)
         }
     }
 }
