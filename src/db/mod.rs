@@ -64,28 +64,6 @@ impl Db {
         self.accounts.iter().map(|(_, acc)| format!("{}\n{}", acc.describe(), acc.describe_transactions())).collect::<Vec<String>>().join("\n")
     }
 
-    // fn execute_transaction(&mut self, t: Transaction, account: &mut Account) -> Result<(), DBError> {
-    //     let result = match t.get_type() {
-    //         TransactionType::Deposit => {
-    //             account.try_deposit(t)
-    //         },
-    //         TransactionType::Withdrawal => {
-    //             account.try_withdraw(t)
-    //         },
-    //         TransactionType::Dispute => {
-    //             account.try_dispute(t)
-    //         },
-    //         TransactionType::Resolve => {
-    //             account.try_resolve(t)
-    //         },
-    //         TransactionType::Chargeback => {
-    //             account.try_chargeback(t)
-    //         }
-    //     };
-    //     result.or_else(|x| Err(x.into()))
-    // }
-
-
     pub fn process_new_transaction(&mut self, t: Transaction) -> Result<(), DBError> {
 
         if let Some(account) = self.get_account_mut(&t.client()) {
@@ -101,32 +79,6 @@ impl Db {
                 Err(DBError::AccountNotFound)
             }
         }
-
-        // match try_account {
-        //     Ok(account) => {
-        //         let result = match t.get_type() {
-        //             TransactionType::Deposit => {
-        //                 account.try_deposit(t)
-        //             },
-        //             TransactionType::Withdrawal => {
-        //                 account.try_withdraw(t)
-        //             },
-        //             TransactionType::Dispute => {
-        //                 account.try_dispute(t)
-        //             },
-        //             TransactionType::Resolve => {
-        //                 account.try_resolve(t)
-        //             },
-        //             TransactionType::Chargeback => {
-        //                 account.try_chargeback(t)
-        //             }
-        //         };
-        //         result.map(|account_error| DBError::AccountError(account_error))
-        //     },
-        //     Err(e) => {
-        //         Some(e)
-        //     }
-        // }
         
     }
 }

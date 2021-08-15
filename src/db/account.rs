@@ -89,48 +89,49 @@ impl Account {
         }
     }
 
-    pub fn get_id(&self) -> u16 {
-        self.id
-    }
+    
 
     pub fn empty(id: u16) -> Self {
         Self::new(id, false, ZERO_MONEY, ZERO_MONEY)
+    }
+
+    pub fn get_id(&self) -> u16 {
+        self.id
     }
 
     fn transaction_exists(&self, tx: &u32) -> bool {
         self.transactions.borrow().contains_key(tx)
     }
 
-    fn transaction_not_exists(&self, tx: &u32) -> bool {
+    fn _transaction_not_exists(&self, tx: &u32) -> bool {
         !self.transaction_exists(tx)
     }
 
-
-    pub fn held_amount(&self) -> Monetary {
+    fn held_amount(&self) -> Monetary {
         *self.held.borrow()
     }
 
-    pub fn available_amount(&self) -> Monetary {
+    fn available_amount(&self) -> Monetary {
         *self.available.borrow()
     }
 
-    pub fn total_amount(&self) -> Monetary {
+    fn total_amount(&self) -> Monetary {
         self.available_amount() + self.held_amount()
     }
 
-    pub fn is_locked(&self) -> bool {
+    fn is_locked(&self) -> bool {
         *self.locked.borrow()
     }
 
-    pub fn lock(&self) {
+    fn lock(&self) {
         *self.locked.borrow_mut() = true
     }
 
-    pub fn unlock(&self) {
+    fn _unlock(&self) {
         *self.locked.borrow_mut() = false
     }
 
-    pub fn add_transaction(&mut self, t: Transaction) {
+    fn add_transaction(&mut self, t: Transaction) {
         self.transactions.borrow_mut().insert(t.tx(), t);
     }
 
@@ -266,7 +267,7 @@ impl Account {
         f(transaction)
     }
 
-    pub fn try_dispute(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_dispute(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
             |transaction| {
@@ -282,7 +283,7 @@ impl Account {
         )
     }
 
-    pub fn try_resolve(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_resolve(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
             |transaction| {
@@ -298,7 +299,7 @@ impl Account {
         )
     }
 
-    pub fn try_chargeback(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_chargeback(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
             |transaction| {
@@ -337,51 +338,6 @@ impl Account {
         let amount = t.amount().ok_or(AccountError::TransactionIsEmpty)?;
         self.withdrawal(amount)?;
         self.add_transaction(t);
-        Ok(())
-    }
-
-    pub fn try_dispute_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
-
-        let mut self_transactions = self.transactions.borrow_mut();
-        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
-
-        if transaction.is_subject_of_dispute() {
-            return Err(AccountError::TransactionIsSubjectOfDispute)
-        }
-
-        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
-        self.dispute(amount)?;
-        transaction.start_dispute();
-        Ok(())
-    }
-
-    pub fn try_resolve_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
-
-        let mut self_transactions = self.transactions.borrow_mut();
-        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
-
-        if transaction.is_not_subject_of_dispute() {
-            return Err(AccountError::TransactionIsNotSubjectOfDispute)
-        }
-
-        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
-        self.resolve(amount)?;
-        transaction.stop_dispute();
-        Ok(())
-    }
-
-
-    pub fn try_chargeback_boring(&mut self, t: Transaction) -> Result<(), AccountError> {
-        let mut self_transactions = self.transactions.borrow_mut();
-        let transaction = self_transactions.get_mut(&t.tx()).ok_or(AccountError::TransactionNotFound)?;
-
-        if transaction.is_not_subject_of_dispute() {
-            return Err(AccountError::TransactionIsNotSubjectOfDispute)
-        }
-
-        let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
-        self.chargeback(amount)?;
-        transaction.stop_dispute();
         Ok(())
     }
 
