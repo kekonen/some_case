@@ -70,7 +70,7 @@ impl Transaction {
         self.client() == client_id
     }
 
-    pub fn different_client(&self, client_id: u16) -> bool {
+    pub fn has_different_client(&self, client_id: u16) -> bool {
         !self.has_client(client_id)
     }
 
