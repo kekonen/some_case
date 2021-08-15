@@ -5,7 +5,7 @@ use transaction::{Transaction, TransactionType};
 
 use std::fmt;
 use std::collections::HashMap;
-use account::{Account, AccountError};
+use account::{Account, error::AccountError};
 
 
 #[derive(Debug, Clone)]

@@ -5,7 +5,7 @@ edition = "2018"
 
 default-run = "serve"
 
-# Dafualt optimization, to be fast when u guys run `cargo run -- ...` in debug mode by default
+# Default optimization, to be fast when u guys run `cargo run -- ...` in debug mode by default
 [profile.dev]
 opt-level = 3
 debug = false
@@ -18,8 +18,6 @@ incremental = false
 codegen-units = 16
 rpath = false
 
-[profile.release]
-opt-level = 3
 
 [dependencies]
 rust_decimal = "1.15"

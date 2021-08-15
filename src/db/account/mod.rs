@@ -1,79 +1,45 @@
+pub mod error;
+
+use error::AccountError;
+
 use rust_decimal::prelude::*;
 use rust_decimal_macros::dec;
-use std::fmt;
 
-// extern crate csv;
-#[macro_use]
-// extern crate serde_derive;
+use std::fmt;
+use std::cell::RefCell;
+
 use std::collections::HashMap;
 
 use crate::db::transaction::{Transaction, TransactionType};
+use crate::Monetary;
 
-const REALLY_REALLY_REALLY_REALLY_A_LOOOOOT: Decimal = dec!(7922816251426433759354396); // Decimal::MAX / 10^4
-const ZERO_MONEY: Decimal = dec!(0); // Decimal::MAX / 10^4
+/// Decimal::MAX / 10^4
+const REALLY_REALLY_REALLY_REALLY_A_LOOOOOT: Decimal = dec!(7922816251426433759354396); 
 
-type Monetary = Decimal;
-
-
-#[derive(Debug, Clone)]
-pub enum AccountError {
-    TooMuch(Monetary),
-    NegativeAmount,
-    AccountLocked,
-    TransactionAlreadyExists,
-    TransactionIsEmpty,
-    TransactionIsSubjectOfDispute,
-    TransactionIsNotSubjectOfDispute,
-    IAmNotTheOwner,
-    TransactionNotFound,
-}
-
-impl fmt::Display for AccountError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AccountError::TooMuch(allowed) => {
-                write!(f, "Too much requested, maximum allowed: {}", allowed)
-            },
-            AccountError::NegativeAmount => {
-                write!(f, "Requested negative amount, which is obviously prohibited")
-            },
-            AccountError::AccountLocked => {
-                write!(f, "Account is locked, please contact support team")
-            },
-            AccountError::TransactionAlreadyExists => {
-                write!(f, "Trying to add a deposit or withdrawal transaction with the same TX id")
-            },
-            AccountError::TransactionIsEmpty => {
-                write!(f, "Transaction's ammount is empty. That is odd: this can happen only if dispute-related transactions tries accessing a deposit/withdrawal transaction, which is empty. Just shady")
-            },
-            AccountError::TransactionIsSubjectOfDispute => {
-                write!(f, "Trying to dispute a transaction which is already being disputed")
-            },
-            AccountError::TransactionIsNotSubjectOfDispute => {
-                write!(f, "Trying to resolve dispute of a transaction which is not disputed")
-            },
-            AccountError::IAmNotTheOwner => {
-                write!(f, "Object and subject transactions have different owners")
-            },
-            AccountError::TransactionNotFound => {
-                write!(f, "Requested transaction not found")
-            },
-        }
-        
-    }
-}
+/// Decimal zero
+const ZERO_MONEY: Decimal = dec!(0);
 
 
 
 
-use std::cell::RefCell;
-// Reconsider which value of total/available/held should be present
+/// Account represents a single client.
+/// The structure also used to keep the transactions associated with the client
 #[derive(Debug)]
 pub struct Account {
+
+    /// Client id
     id: u16,
+
+    /// If the account is blocked
     locked: RefCell<bool>,
+
+    /// Available funds
     available: RefCell<Monetary>,
+
+    /// Held funds
     held: RefCell<Monetary>,
+    
+    /// Transactions storage
     transactions: RefCell<HashMap<u32, Transaction>>,
 }
 
@@ -93,6 +59,7 @@ impl fmt::Display for Account {
 
 impl Account {
 
+    /// Basic constructor
     pub fn new(id: u16, locked: bool, available: Monetary, held: Monetary) -> Self {
         Self {
             id,
@@ -103,73 +70,88 @@ impl Account {
         }
     }
 
-    
-
+    /// Constructor for empty accounts. Typically new ones
     pub fn empty(id: u16) -> Self {
         Self::new(id, false, ZERO_MONEY, ZERO_MONEY)
     }
 
+    /// Account (client) id getter
     pub fn get_id(&self) -> u16 {
         self.id
     }
 
+    /// Checks if a transactions with id `tx` exists in the account
     fn transaction_exists(&self, tx: &u32) -> bool {
         self.transactions.borrow().contains_key(tx)
     }
 
+    /// Opposite to `transaction_exists`
     fn _transaction_not_exists(&self, tx: &u32) -> bool {
         !self.transaction_exists(tx)
     }
 
+    /// Held amount getter
     fn held_amount(&self) -> Monetary {
         *self.held.borrow()
     }
 
+    /// Available amount getter
     fn available_amount(&self) -> Monetary {
         *self.available.borrow()
     }
 
+    /// Total amount getter
     fn total_amount(&self) -> Monetary {
         self.available_amount() + self.held_amount()
     }
 
+    /// Returns `true` is the account is locked
     fn is_locked(&self) -> bool {
         *self.locked.borrow()
     }
 
+    /// Locks the account
     fn lock(&self) {
         *self.locked.borrow_mut() = true
     }
 
+    /// Unlocks the account
     fn _unlock(&self) {
         *self.locked.borrow_mut() = false
     }
 
+    /// Adds a transaction to the account
     fn add_transaction(&mut self, t: Transaction) {
         self.transactions.borrow_mut().insert(t.tx(), t);
     }
 
+    /// 
     fn add_held(&self, amount: Monetary) {
         *self.held.borrow_mut() += amount
     }
 
+    /// 
     fn sub_held(&self, amount: Monetary) {
         *self.held.borrow_mut() -= amount
     }
 
+    /// 
     fn add_available(&self, amount: Monetary) {
         *self.available.borrow_mut() += amount
     }
 
+    /// 
     fn sub_available(&self, amount: Monetary) {
         *self.available.borrow_mut() -= amount
     }
 
+    /// 
     fn move_available_2_held(&self, amount: Monetary) {
         self.sub_available(amount);
         self.add_held(amount);
     }
 
+    /// 
     fn move_held_2_available(&self, amount: Monetary) {
         self.sub_held(amount);
         self.add_available(amount);
@@ -186,14 +168,17 @@ impl Account {
         REALLY_REALLY_REALLY_REALLY_A_LOOOOOT - self.total_amount()
     }
 
+    /// 
     pub fn describe_transactions(&self) -> String {
         self.transactions.borrow().iter().map(|(_, t)| format!(" + {}", t.describe())).collect::<Vec<String>>().join("\n")
     }
 
+    /// 
     pub fn describe(&self) -> String {
         format!("id: {}, locked: {}, available: {} + held: {} = {}", self.id, self.is_locked(), self.available_amount(), self.held_amount(), self.total_amount())
     }
 
+    /// 
     fn test_deposit(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -206,6 +191,7 @@ impl Account {
         }
     }
 
+    /// 
     fn test_available(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -220,6 +206,7 @@ impl Account {
     }
 
 
+    /// 
     fn test_held(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -273,6 +260,7 @@ impl Account {
     }
 
 
+    /// 
     fn try_perform_with_transaction<F>(&self, tx: u32, f: F) -> Result<(), AccountError> 
     where F: FnOnce(&mut Transaction) -> Result<(), AccountError>  {
         let mut self_transactions = self.transactions.borrow_mut();
@@ -281,6 +269,7 @@ impl Account {
         f(transaction)
     }
 
+    /// 
     pub fn try_dispute(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -297,6 +286,7 @@ impl Account {
         )
     }
 
+    /// 
     pub fn try_resolve(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -313,6 +303,7 @@ impl Account {
         )
     }
 
+    /// 
     pub fn try_chargeback(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -355,6 +346,7 @@ impl Account {
         Ok(())
     }
 
+    /// 
     pub fn execute_transaction(&mut self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
             return Err(AccountError::AccountLocked)
@@ -377,5 +369,23 @@ impl Account {
                 self.try_chargeback(t)
             }
         }
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn client_tests() {
+        let a = Account::empty(1);
+        // assert_eq!(a.has_client(2), false);
+    }
+
+    #[test]
+    fn dispute() {
+        let a = Account::empty(1);
     }
 }
