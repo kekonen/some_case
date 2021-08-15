@@ -2,7 +2,7 @@ use case::fuzzing::gen_json;
 use hyper::{Body, Method, Request, Client};
 use futures::future::join_all;
 use chrono::prelude::*;
-use case::fuzzing::{gen_line, gen_money};
+use case::fuzzing::gen_line;
 
 
 extern crate clap;

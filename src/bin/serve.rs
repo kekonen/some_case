@@ -3,31 +3,12 @@ use clap::{Arg, App, SubCommand};
 
 use std::io;
 
-use case::db::{Db, DBError};
+use case::db::Db;
 use case::db::transaction::Transaction;
 
 use std::sync::{Arc, Mutex};
 
 use warp::Filter;
-
-// #[derive(Clone)]
-// struct Router {
-    // db: Arc<Mutex<Db>>
-// }
-
-// impl Router {
-//     pub fn new() -> Self {
-//         Self {
-//             db: Arc::new(Mutex::new(Db::new()))
-//         }
-//     }
-
-//     pub fn process(&self, t: Transaction) -> Result<(), DBError> {
-//         let mut db = self.db.lock().unwrap();
-//             println!("accounts: {}", db.describe_accounts());
-//             db.process_new_transaction(t)
-//     }
-// }
 
 fn from_stdin(verbose: bool) {
     let mut db = Db::new();
