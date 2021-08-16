@@ -1,75 +1,9 @@
-use case::fuzzing::gen_json;
-use hyper::{Body, Method, Request, Client};
-use futures::future::join_all;
-use chrono::prelude::*;
-use case::fuzzing::gen_line;
-
-
 extern crate clap;
 use clap::{Arg, App, SubCommand};
 
+use case::{run_server_fuzz, gen_lines};
 
-async fn make_requests(url: &str, t_i: u64, n: u64, statistics: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let client = Client::new();
 
-    let mut rng = rand::thread_rng();
-    let start: DateTime<Local> = Local::now();
-    for i in 0..n {
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(url)
-            .header("content-type", "application/json")
-            .body(Body::from(gen_json(&mut rng))).unwrap();
-        let _ = client.request(req).await.expect("Couldn't make a request, please check that the server is running");
-
-        if statistics {
-            if i % 1024*32 == 0 && i != 0 {
-                let elapsed = Local::now()-start;
-                let microsec = elapsed.num_microseconds().unwrap() / i as i64;
-                let sec = microsec as f64 / 1000000.0;
-    
-                println!("{} -> {:.6} sec/req at i {}", t_i, sec, i);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn run_server_fuzz(url: &str, n: u64, concurrent: u64, statistics: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-
-    let start: DateTime<Local> = Local::now();
-
-    let mut children = vec![];
-
-    for t_i in 0..concurrent {
-        children.push(make_requests(url, t_i, n/concurrent, statistics));
-    }
-
-    join_all(children).await;
-
-    let elapsed = Local::now() - start;
-
-    let microsec_total = elapsed.num_microseconds().unwrap();
-    let sec_total = microsec_total as f64 / 1000000.0;
-
-    let microsec_per_request = microsec_total / n as i64;
-    let sec_per_request = microsec_per_request as f64 / 1000000.0;
-
-    println!("Done in {:.6} sec, with {:.7} sec/req with {} || {}", sec_total, sec_per_request, n, concurrent);
-
-    Ok(())
-}
-
-fn gen_lines(n: u64) {
-
-    println!("type,client,tx,amount");
-
-    let mut rng = rand::thread_rng();
-    for _ in 0..n {
-        println!("{}", gen_line(&mut rng))
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
