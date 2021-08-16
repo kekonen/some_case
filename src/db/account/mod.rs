@@ -359,7 +359,8 @@ impl Account {
 
     }
 
-    /// Main entrypoint for a new transaction to an account. Checks types an performs operation
+    /// Main entrypoint for a new transaction to an account. Checks types an performs operation.
+    /// The only place to check if account is locked. 
     pub fn execute_transaction(&self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
             return Err(AccountError::AccountLocked)
@@ -425,7 +426,7 @@ mod tests {
 
         assert_eq!(a.total_amount(), dec!(14.5));
 
-        assert_eq!(a.withdrawal(dec!(14.5)), Err(AccountError::AccountLocked));
+        assert_eq!(a.withdrawal(dec!(14.5)), Ok(()));
     }
 
     #[test]
@@ -443,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn dispute() {
+    fn to_dispute_or_not_to_dispute() {
         let a = Account::empty(1);
 
         let t = Transaction::new(
@@ -455,6 +456,16 @@ mod tests {
         );
 
         assert_eq!(a.execute_transaction(t), Ok(()));
+
+        let t = Transaction::new(
+            TransactionType::Deposit,
+            1,
+            2,
+            Some(dec!(1.0)),
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Err(AccountError::TransactionAlreadyExists));
 
         let t = Transaction::new(
             TransactionType::Dispute,
@@ -497,7 +508,7 @@ mod tests {
         assert_eq!(a.execute_transaction(t), Err(AccountError::TransactionIsSubjectOfDispute));
 
         let t = Transaction::new(
-            TransactionType::Resolve,
+            TransactionType::Chargeback,
             1,
             2,
             None,
@@ -505,5 +516,15 @@ mod tests {
         );
 
         assert_eq!(a.execute_transaction(t), Ok(()));
+        
+        let t = Transaction::new(
+            TransactionType::Deposit,
+            1,
+            5,
+            Some(dec!(1.0)),
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Err(AccountError::AccountLocked));
     }
 }
