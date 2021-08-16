@@ -1,5 +1,3 @@
-use rust_decimal_macros::dec;
-
 use serde::Deserialize;
 
 use crate::Monetary;

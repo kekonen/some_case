@@ -62,7 +62,7 @@ impl Db {
             Ok(())
         } else {
             if t.get_type() == &TransactionType::Deposit {
-                let mut account = Account::empty(t.client());
+                let account = Account::empty(t.client());
                 account.execute_transaction(t).or_else::<DBError, _>(|x| Err(x.into()))?;
                 self.add_account(account);
                 Ok(())
