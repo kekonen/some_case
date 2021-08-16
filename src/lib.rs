@@ -81,7 +81,7 @@ pub async fn run_server(port: u16, verbose: bool) {
 
     let with_state = warp::any().map(move || db.clone());
 
-    let json = warp::path("json")
+    let json = warp::header::exact("content-type", "application/json")
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
         .and(with_state.clone())
@@ -100,7 +100,7 @@ pub async fn run_server(port: u16, verbose: bool) {
             }
         });
 
-    let csv = warp::path("csv")
+    let csv = warp::any()
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::bytes())
         .and(with_state.clone())

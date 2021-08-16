@@ -24,6 +24,8 @@ There are 2 implementations (`src/bin/serve.rs`):
  1. File/stdin implementation. As requested it can read from a file, but also can consume from a stdin (I needed it to be tested by a fuzzer).
  2. Server implementation. Basic, warp async server. I tinkered a bit with the implementation of it, and it seems like very efficiant way. Though, I would play more with sharding.
 
+Server accepts JSON (`content-type` must be `application/json`) or separate CSVs (one value per request) to root `/`.
+
 
 I also wrote a fuzzer, with 2 implementations for both (`src/bin/fuzzer.rs`):
  1. Single threaded fuzzer, quite slow, but throws data into stdout, to catch it and test the engine.
