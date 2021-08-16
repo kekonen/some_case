@@ -139,7 +139,7 @@ pub async fn run_server(port: u16, verbose: bool) {
         .map(move |db: Arc<Mutex<Db>>| {
             match db.lock() {
                 Ok(db) => {
-                    format!("{}",db)
+                    format!("{}", db)
                 },
                 Err(e) => format!("poison error: {}", e)
             }
