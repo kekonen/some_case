@@ -108,18 +108,28 @@ pub async fn run_server(port: u16, verbose: bool) {
 
             rdr.set_headers(StringRecord::from(vec!["type", "client", "tx", "amount"]));
 
-            let transaction = rdr.deserialize::<Transaction>().next().unwrap().unwrap();
-            if verbose {
-                println!("{:?}", transaction);
-            }
-            match db.lock() {
-                Ok(mut db) => {
-                    match db.process_new_transaction(transaction) {
-                        Ok(_) => "OK".to_string(),
-                        Err(e) => format!("Err: {}", e),
+            if let Some(record) = rdr.deserialize::<Transaction>().next() {
+                match record {
+                    Ok(transaction) => {
+                        if verbose {
+                            println!("{:?}", transaction);
+                        }
+                        match db.lock() {
+                            Ok(mut db) => {
+                                match db.process_new_transaction(transaction) {
+                                    Ok(_) => "OK".to_string(),
+                                    Err(e) => format!("Err: {}", e),
+                                }
+                            },
+                            Err(e) => format!("poison error: {}", e)
+                        }
+                    },
+                    Err(e) => {
+                        format!("Error: {:?}", e)
                     }
-                },
-                Err(e) => format!("poison error: {}", e)
+                }
+            } else {
+                "Empty request".to_string()
             }
         });
 
