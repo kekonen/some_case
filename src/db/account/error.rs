@@ -3,8 +3,9 @@ use std::fmt;
 
 
 /// Represents an error happend inside of the account, typically during processing of a transaction
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountError {
+    /// Too much - contains the maximum allowed amount to perform the operation
     TooMuch(Monetary),
     NegativeAmount,
     AccountLocked,

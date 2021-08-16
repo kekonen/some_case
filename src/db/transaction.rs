@@ -40,11 +40,6 @@ impl Transaction {
         self.subject_of_dispute = false
     }
 
-    /// Describes the transaction - usefull for the debug
-    pub fn describe(&self) -> String {
-        format!("type: {:?}, dispute: {}, client: {}, tx: {}, amount: {}", self.r#type, self.subject_of_dispute, self.client, self.tx, self.amount.unwrap_or(dec!(0)))
-    }
-
     /// Amount getter
     pub fn amount(&self) -> Option<Monetary> {
         self.amount
@@ -101,7 +96,7 @@ mod tests {
         };
         assert_eq!(t.has_client(2), false);
         assert_eq!(t.has_client(t.client()), true);
-        assert_eq!(t.has_different_client(2), !t.has_different_client(1));
+        assert_ne!(t.has_different_client(2), t.has_different_client(1));
     }
 
     #[test]
@@ -127,6 +122,6 @@ mod tests {
 
         t.stop_dispute();
 
-        assert_eq!(t.is_subject_of_dispute(), false);
+        assert_ne!(t.is_subject_of_dispute(), true);
     }
 }

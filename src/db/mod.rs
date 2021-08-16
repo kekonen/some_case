@@ -55,10 +55,6 @@ impl Db {
         self.accounts.get_mut(id)
     }
 
-    pub fn describe_accounts(&self) -> String {
-        self.accounts.iter().map(|(_, acc)| format!("{}\n{}", acc.describe(), acc.describe_transactions())).collect::<Vec<String>>().join("\n")
-    }
-
     pub fn process_new_transaction(&mut self, t: Transaction) -> Result<(), DBError> {
 
         if let Some(account) = self.get_account_mut(&t.client()) {

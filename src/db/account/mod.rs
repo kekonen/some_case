@@ -120,38 +120,38 @@ impl Account {
         *self.locked.borrow_mut() = false
     }
 
-    /// Adds a transaction to the account
+    /// Adds a transaction to the account. Doesn't perform any checks, left it to higher level functions
     fn add_transaction(&mut self, t: Transaction) {
         self.transactions.borrow_mut().insert(t.tx(), t);
     }
 
-    /// 
+    /// Adds money to held
     fn add_held(&self, amount: Monetary) {
         *self.held.borrow_mut() += amount
     }
 
-    /// 
+    /// Subs money from held
     fn sub_held(&self, amount: Monetary) {
         *self.held.borrow_mut() -= amount
     }
 
-    /// 
+    /// Adds money to available
     fn add_available(&self, amount: Monetary) {
         *self.available.borrow_mut() += amount
     }
 
-    /// 
+    /// Subs money from available
     fn sub_available(&self, amount: Monetary) {
         *self.available.borrow_mut() -= amount
     }
 
-    /// 
+    /// Moves some amount of money from available to held
     fn move_available_2_held(&self, amount: Monetary) {
         self.sub_available(amount);
         self.add_held(amount);
     }
 
-    /// 
+    /// Moves some amount of money from held to available
     fn move_held_2_available(&self, amount: Monetary) {
         self.sub_held(amount);
         self.add_available(amount);
@@ -162,23 +162,12 @@ impl Account {
     /// Not Decimal::MAX, but Decimal::MAX / 10^4, because even though we won't get an overflow immediately,
     /// still the digits after floating point will be eaten.
     /// As we want to support 4 digits after the point, we need at least 10^4.
-    /// Also, it is so big number, that even dropping 10^16 is safe (in context of $$$), as it is super a lot of money, and if someone gets so much,
-    /// we better look at it.
     pub fn amount_till_overflow(&self) -> Monetary {
         REALLY_REALLY_REALLY_REALLY_A_LOOOOOT - self.total_amount()
     }
 
-    /// 
-    pub fn describe_transactions(&self) -> String {
-        self.transactions.borrow().iter().map(|(_, t)| format!(" + {}", t.describe())).collect::<Vec<String>>().join("\n")
-    }
-
-    /// 
-    pub fn describe(&self) -> String {
-        format!("id: {}, locked: {}, available: {} + held: {} = {}", self.id, self.is_locked(), self.available_amount(), self.held_amount(), self.total_amount())
-    }
-
-    /// 
+    /// Tests if possible to deposit this amount of money.
+    /// Typically not negative, and `total` should be ready to receive the amount, without overflow.
     fn test_deposit(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -191,7 +180,8 @@ impl Account {
         }
     }
 
-    /// 
+    /// Tests if possible to take this amount of money from available.
+    /// Typically not negative, and available should have the amount.
     fn test_available(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -206,7 +196,8 @@ impl Account {
     }
 
 
-    /// 
+    /// Tests if possible to take this amount of money from held.
+    /// Typically not negative, and held should have the amount.
     fn test_held(&self, amount: Monetary) -> Result<(), AccountError> {
         if amount < ZERO_MONEY {
             return Err(AccountError::NegativeAmount)
@@ -219,48 +210,59 @@ impl Account {
         }
     }
 
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Deposits the amount to `available`, if possible. Performs necessary monetary checks
     pub fn deposit(&self, amount: Monetary) -> Result<(), AccountError> {
+
         self.test_deposit(amount)?;
         self.add_available(amount);
+
         Ok(())
     }
 
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Withdraws the amount from `available`, if possible. Performs necessary monetary checks
     pub fn withdrawal(&self, amount: Monetary) -> Result<(), AccountError> {
+
         self.test_available(amount)?;
         self.sub_available(amount);
+
         Ok(())
     }
 
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Moves the amount from `available` to `held`, if possible. Performs necessary monetary checks
     pub fn dispute(&self, amount: Monetary) -> Result<(), AccountError> {
+
         self.test_available(amount)?;
         self.move_available_2_held(amount);
+
         Ok(())
     }
 
 
 
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Moves the amount from `held` to `available`, if possible. Performs necessary monetary checks
     pub fn resolve(&self, amount: Monetary) -> Result<(), AccountError> {
 
         self.test_held(amount)?;
         self.move_held_2_available(amount);
+
         Ok(())
     }
 
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Chargebacks the amount from `held`, if possible, and locks the account. Performs necessary monetary checks
     pub fn chargeback(&self, amount: Monetary) -> Result<(), AccountError> {
         
         self.test_held(amount)?;
         self.sub_held(amount);
+
         self.lock();
+
         Ok(())
     }
 
 
-    /// 
+    /// Just to show a closure to the reviewer... I know, less readable, but yet just to have less boring code.
+    /// Basically, gets the transaction and passes it to a closure, which performs necessary actions on it.
+    /// Saves space for try_dispute, try_resolve, try_chargeback functions
     fn try_perform_with_transaction<F>(&self, tx: u32, f: F) -> Result<(), AccountError> 
     where F: FnOnce(&mut Transaction) -> Result<(), AccountError>  {
         let mut self_transactions = self.transactions.borrow_mut();
@@ -269,7 +271,7 @@ impl Account {
         f(transaction)
     }
 
-    /// 
+    /// Tries to perform a dispute operation against an existing transaction 
     pub fn try_dispute(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -279,14 +281,16 @@ impl Account {
                 }
         
                 let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+
                 self.dispute(amount)?;
                 transaction.start_dispute();
+                
                 Ok(())
             }
         )
     }
 
-    /// 
+    /// Tries to perform a resolve operation against an existing transaction 
     pub fn try_resolve(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -296,14 +300,16 @@ impl Account {
                 }
 
                 let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+
                 self.resolve(amount)?;
                 transaction.stop_dispute();
+                
                 Ok(())  
             }
         )
     }
 
-    /// 
+    /// Tries to perform a chargeback operation against an existing transaction 
     pub fn try_chargeback(&self, t: Transaction) -> Result<(), AccountError> {
 
         self.try_perform_with_transaction(t.tx(), 
@@ -313,15 +319,17 @@ impl Account {
                 }
 
                 let amount = transaction.amount().ok_or(AccountError::TransactionIsEmpty)?;
+
                 self.chargeback(amount)?;
                 transaction.stop_dispute();
+                
                 Ok(())  
             }
         )
     }
 
 
-    /// Credits the amount, if not possible returns the available amount (like if there is an overflow)
+    /// Tries to perform a deposit operation
     pub fn try_deposit(&mut self, t: Transaction) -> Result<(), AccountError> {
 
         if self.transaction_exists(&t.tx()) {
@@ -329,11 +337,14 @@ impl Account {
         }
         
         let amount = t.amount().ok_or(AccountError::TransactionIsEmpty)?;
+
         self.deposit(amount)?;
         self.add_transaction(t);
+
         Ok(())
     }
-    /// Debits the amount, if not possible returns the available amount (like if there is an overflow)
+
+    /// Tries to perform a withdrawal operation
     pub fn try_withdraw(&mut self, t: Transaction) -> Result<(), AccountError> {
 
         if self.transaction_exists(&t.tx()) {
@@ -341,12 +352,14 @@ impl Account {
         }
 
         let amount = t.amount().ok_or(AccountError::TransactionIsEmpty)?;
+
         self.withdrawal(amount)?;
         self.add_transaction(t);
         Ok(())
+
     }
 
-    /// 
+    /// Main entrypoint for a new transaction to an account. Checks types an performs operation
     pub fn execute_transaction(&mut self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
             return Err(AccountError::AccountLocked)
@@ -379,13 +392,68 @@ mod tests {
     use super::*;
 
     #[test]
-    fn client_tests() {
+    fn empty_is_empty() {
         let a = Account::empty(1);
-        // assert_eq!(a.has_client(2), false);
+        assert_eq!(a.available_amount(), dec!(0));
+        assert_eq!(a.held_amount(), dec!(0));
+        assert_eq!(a.total_amount(), dec!(0));
+    }
+
+    #[test]
+    fn account_tests() {
+        let a = Account::empty(1);
+
+        assert_eq!(a.is_locked(), false);
+
+        assert_eq!(a.deposit(dec!(15.0)), Ok(()));
+
+        assert_eq!(a.available_amount(), dec!(15.0));
+
+        assert_eq!(a.dispute(dec!(16.0)), Err(AccountError::TooMuch(dec!(15.0))));
+
+        assert_eq!(a.dispute(dec!(7.5)), Ok(()));
+
+        assert_eq!(a.available_amount(), dec!(7.5));
+
+        assert_eq!(a.resolve(dec!(7)), Ok(()));
+
+        assert_eq!(a.chargeback(dec!(7)), Err(AccountError::TooMuch(dec!(0.5))));
+
+        assert_eq!(a.chargeback(dec!(0.5)), Ok(()));
+
+        assert_eq!(a.is_locked(), true);
+
+        assert_eq!(a.total_amount(), dec!(14.5));
+
+        assert_eq!(a.withdrawal(dec!(14.5)), Err(AccountError::AccountLocked));
+    }
+
+    #[test]
+    fn wrong_amounts() {
+        let a = Account::empty(1);
+
+        assert_eq!(a.deposit(dec!(1.0)), Ok(()));
+
+        assert_eq!(a.available_amount(), dec!(1.0));
+        assert_eq!(a.withdrawal(dec!(2.0)), Err(AccountError::TooMuch(a.available_amount())));
+        
+        assert_eq!(a.deposit(dec!(-1.0)), Err(AccountError::NegativeAmount));
+
+        assert_eq!(a.deposit(REALLY_REALLY_REALLY_REALLY_A_LOOOOOT - dec!(0.5)), Err(AccountError::TooMuch(dec!(7922816251426433759354395.0))));
     }
 
     #[test]
     fn dispute() {
-        let a = Account::empty(1);
+        let mut a = Account::empty(1);
+
+        let t = Transaction {
+            r#type: TransactionType::Deposit,
+            client: 1,
+            tx: 2,
+            amount: Some(dec!(1.0)),
+            subject_of_dispute: false,
+        };
+
+        a.execute_transaction(t);
     }
 }
