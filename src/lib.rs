@@ -15,6 +15,7 @@ use std::io;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
 use warp::Filter;
+use csv::{Reader, StringRecord};
 
 
 use hyper::{Body, Method, Request, Client};
@@ -71,9 +72,7 @@ pub fn from_file(location: &str, verbose: bool) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-use bytes::Bytes;
-use std::error::Error;
-use csv::{Reader, Position, StringRecord};
+
 /// Run server. Post is passed to the engine. Get fetches the actual state.
 pub async fn run_server(port: u16, verbose: bool) {
 
