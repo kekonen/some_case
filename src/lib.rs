@@ -71,6 +71,9 @@ pub fn from_file(location: &str, verbose: bool) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+use bytes::Bytes;
+use std::error::Error;
+use csv::{Reader, Position, StringRecord};
 /// Run server. Post is passed to the engine. Get fetches the actual state.
 pub async fn run_server(port: u16, verbose: bool) {
 
@@ -78,7 +81,7 @@ pub async fn run_server(port: u16, verbose: bool) {
 
     let with_state = warp::any().map(move || db.clone());
 
-    let post = warp::post()
+    let json = warp::path("json")
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
         .and(with_state.clone())
@@ -89,6 +92,30 @@ pub async fn run_server(port: u16, verbose: bool) {
             match db.lock() {
                 Ok(mut db) => {
                     match db.process_new_transaction(record) {
+                        Ok(_) => "OK".to_string(),
+                        Err(e) => format!("Err: {}", e),
+                    }
+                },
+                Err(e) => format!("poison error: {}", e)
+            }
+        });
+
+    let csv = warp::path("csv")
+        .and(warp::body::content_length_limit(1024 * 32))
+        .and(warp::body::bytes())
+        .and(with_state.clone())
+        .map(move |record: bytes::Bytes, db: Arc<Mutex<Db>>| {
+            let mut rdr = Reader::from_reader(io::Cursor::new(record));
+
+            rdr.set_headers(StringRecord::from(vec!["type", "client", "tx", "amount"]));
+
+            let transaction = rdr.deserialize::<Transaction>().next().unwrap().unwrap();
+            if verbose {
+                println!("{:?}", transaction);
+            }
+            match db.lock() {
+                Ok(mut db) => {
+                    match db.process_new_transaction(transaction) {
                         Ok(_) => "OK".to_string(),
                         Err(e) => format!("Err: {}", e),
                     }
@@ -109,7 +136,9 @@ pub async fn run_server(port: u16, verbose: bool) {
             }
         });
 
-    let routes = post.or(get);
+    let routes = warp::post()
+                    .and(json.or(csv))
+                    .or(get);
 
     warp::serve(routes)
         .run(([127, 0, 0, 1], port))
@@ -167,7 +196,7 @@ pub async fn run_server_fuzz(url: &str, n: u64, concurrent: u64, statistics: boo
     let microsec_per_request = microsec_total / n as i64;
     let sec_per_request = microsec_per_request as f64 / 1000000.0;
 
-    println!("Done in {:.6} sec, with {:.7} sec/req with {} || {}", sec_total, sec_per_request, n, concurrent);
+    println!("Done {} requests in {:.6} sec total, with {:.7} sec/req. Concurrency || {}", n, sec_total, sec_per_request, concurrent);
 
     Ok(())
 }

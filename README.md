@@ -20,24 +20,29 @@ cargo run -- < /tmp/transactions.csv > accounts.csv
 
 
 ## Implementations
-There are 2 implementations:
+There are 2 implementations (`src/bin/serve.rs`):
  1. File/stdin implementation. As requested it can read from a file, but also can consume from a stdin (I needed it to be tested by a fuzzer).
  2. Server implementation. Basic, warp async server. I tinkered a bit with the implementation of it, and it seems like very efficiant way. Though, I would play more with sharding.
 
 
-I wrote a fuzzer, with 2 implementations for both:
- 1. Single threaded fuzzer, quite slow, but throws data into stdout, to catch it and test the engine
- 2. Concurrent requests fuzzer, which queries the server asyncronously
+I also wrote a fuzzer, with 2 implementations for both (`src/bin/fuzzer.rs`):
+ 1. Single threaded fuzzer, quite slow, but throws data into stdout, to catch it and test the engine.
+ 2. Concurrent requests fuzzer, which queries the server asyncronously.
 
 
-You could run the server. It will start at 3030 by default. Alternatively, -p flag sets the port.
+You could run the server. It will start at `3030` by default. Alternatively, `-p` flag sets the port.
 ```
 cargo run -- server
 ```
 and then you could start a fuzzer
 ```
 cargo run --bin fuzzer server -n 1048576 -c 128
-# Done in 9.741768 sec, with 0.0000090 sec/req with 1048576 || 128
+# Done 1048576 requests in 9.741768 sec total, with 0.0000090 sec/req. Concurrency || 128
 ```
-where `-n` is the total amount of requests and `c` is the concurrent requests. You could also set `-u http://xxx:3030`, to alternatively run multiple machines against the server.
+where `-n` is the total amount of requests and `-c` is the concurrent requests. You could also set `-u http://xxx:3030`, to alternatively run multiple machines against the server.
+
+## Tests
+They are not perfect, as I concentrated on the implementation.
+
+
 
