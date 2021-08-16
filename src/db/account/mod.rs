@@ -121,7 +121,7 @@ impl Account {
     }
 
     /// Adds a transaction to the account. Doesn't perform any checks, left it to higher level functions
-    fn add_transaction(&mut self, t: Transaction) {
+    fn add_transaction(&self, t: Transaction) {
         self.transactions.borrow_mut().insert(t.tx(), t);
     }
 
@@ -330,7 +330,7 @@ impl Account {
 
 
     /// Tries to perform a deposit operation
-    pub fn try_deposit(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_deposit(&self, t: Transaction) -> Result<(), AccountError> {
 
         if self.transaction_exists(&t.tx()) {
             return Err(AccountError::TransactionAlreadyExists)
@@ -345,7 +345,7 @@ impl Account {
     }
 
     /// Tries to perform a withdrawal operation
-    pub fn try_withdraw(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn try_withdraw(&self, t: Transaction) -> Result<(), AccountError> {
 
         if self.transaction_exists(&t.tx()) {
             return Err(AccountError::TransactionAlreadyExists)
@@ -360,7 +360,7 @@ impl Account {
     }
 
     /// Main entrypoint for a new transaction to an account. Checks types an performs operation
-    pub fn execute_transaction(&mut self, t: Transaction) -> Result<(), AccountError> {
+    pub fn execute_transaction(&self, t: Transaction) -> Result<(), AccountError> {
         if self.is_locked() {
             return Err(AccountError::AccountLocked)
         }
@@ -444,16 +444,66 @@ mod tests {
 
     #[test]
     fn dispute() {
-        let mut a = Account::empty(1);
+        let a = Account::empty(1);
 
-        let t = Transaction {
-            r#type: TransactionType::Deposit,
-            client: 1,
-            tx: 2,
-            amount: Some(dec!(1.0)),
-            subject_of_dispute: false,
-        };
+        let t = Transaction::new(
+            TransactionType::Deposit,
+            1,
+            2,
+            Some(dec!(1.0)),
+            false,
+        );
 
-        a.execute_transaction(t);
+        assert_eq!(a.execute_transaction(t), Ok(()));
+
+        let t = Transaction::new(
+            TransactionType::Dispute,
+            1,
+            3,
+            None,
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Err(AccountError::TransactionNotFound));
+
+        let t = Transaction::new(
+            TransactionType::Resolve,
+            1,
+            2,
+            None,
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Err(AccountError::TransactionIsNotSubjectOfDispute));
+
+        let t = Transaction::new(
+            TransactionType::Dispute,
+            1,
+            2,
+            None,
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Ok(()));
+
+        let t = Transaction::new(
+            TransactionType::Dispute,
+            1,
+            2,
+            None,
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Err(AccountError::TransactionIsSubjectOfDispute));
+
+        let t = Transaction::new(
+            TransactionType::Resolve,
+            1,
+            2,
+            None,
+            false,
+        );
+
+        assert_eq!(a.execute_transaction(t), Ok(()));
     }
 }

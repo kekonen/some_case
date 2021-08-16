@@ -30,6 +30,18 @@ pub struct Transaction {
 }
 
 impl Transaction {
+
+    /// Constructor
+    pub fn new(r#type: TransactionType, client: u16, tx: u32, amount: Option<Monetary>, subject_of_dispute: bool) -> Self{
+        Self {
+            r#type,
+            client,
+            tx,
+            amount,
+            subject_of_dispute,
+        }
+    }
+
     /// Starts a dispute for the transaction
     pub fn start_dispute(&mut self) {
         self.subject_of_dispute = true
