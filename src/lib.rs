@@ -3,26 +3,27 @@ use rust_decimal::prelude::*;
 pub mod db;
 pub mod fuzzing;
 
-/// Main type to deal with money, which is basically a Decimal
-type Monetary = Decimal;
-
 use fuzzing::{gen_json, gen_line};
-use std::io;
 
 use db::Db;
 use db::transaction::Transaction;
 
-use std::sync::{Arc, Mutex};
+/// Main type to deal with money, which is basically a Decimal
+type Monetary = Decimal;
 
+use std::io;
+use std::fs::File;
+use std::sync::{Arc, Mutex};
 use warp::Filter;
+
 
 use hyper::{Body, Method, Request, Client};
 use futures::future::join_all;
 use chrono::prelude::*;
 
 /// Read lines from stdin and pass to the engine.
-pub fn from_stdin(verbose: bool) {
-    let mut db = Db::new();
+pub fn from_stdin(verbose: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut db = Db::default();
     
     let mut rdr = csv::Reader::from_reader(io::stdin());
 
@@ -41,12 +42,39 @@ pub fn from_stdin(verbose: bool) {
     }
 
     println!("{}", db);
+    Ok(())
+}
+
+/// Read lines from file and pass to the engine.
+pub fn from_file(location: &str, verbose: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut db = Db::default();
+    
+    let file = File::open(location)?;
+
+    let mut rdr = csv::Reader::from_reader(file);
+
+    for result in rdr.deserialize::<Transaction>() {
+        match result {
+            Ok(record) => {
+                if verbose {println!("{:?}", record)}
+                if let Err(e) = db.process_new_transaction(record) {
+                    if verbose {println!("E: {:?}", e)}
+                }
+            },
+            Err(e) => {
+                if verbose {println!("E: {:?}", e)}
+            },
+        }
+    }
+
+    println!("{}", db);
+    Ok(())
 }
 
 /// Run server. Post is passed to the engine. Get fetches the actual state.
 pub async fn run_server(port: u16, verbose: bool) {
 
-    let db = Arc::new(Mutex::new(Db::new()));
+    let db = Arc::new(Mutex::new(Db::default()));
 
     let with_state = warp::any().map(move || db.clone());
 
@@ -60,7 +88,7 @@ pub async fn run_server(port: u16, verbose: bool) {
             }
             match db.lock() {
                 Ok(mut db) => {
-                    match db.process_new_transaction(record.clone()) {
+                    match db.process_new_transaction(record) {
                         Ok(_) => "OK".to_string(),
                         Err(e) => format!("Err: {}", e),
                     }
@@ -106,14 +134,12 @@ pub async fn make_requests(url: &str, t_i: u64, n: u64, statistics: bool) -> Res
             .body(Body::from(gen_json(&mut rng))).unwrap();
         let _ = client.request(req).await.expect("Couldn't make a request, please check that the server is running");
 
-        if statistics {
-            if i % 1024*32 == 0 && i != 0 {
-                let elapsed = Local::now()-start;
-                let microsec = elapsed.num_microseconds().unwrap() / i as i64;
-                let sec = microsec as f64 / 1000000.0;
-    
-                println!("{} -> {:.6} sec/req at i {}", t_i, sec, i);
-            }
+        if statistics && i % 1024*32 == 0 && i != 0 {
+            let elapsed = Local::now()-start;
+            let microsec = elapsed.num_microseconds().unwrap() / i as i64;
+            let sec = microsec as f64 / 1000000.0;
+
+            println!("{} -> {:.6} sec/req at i {}", t_i, sec, i);
         }
     }
 

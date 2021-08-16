@@ -45,7 +45,7 @@ pub struct Account {
 
 impl fmt::Display for Account {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}, {:.4}, {:.4}, {:.4}, {}\n",
+        writeln!(f, "{}, {:.4}, {:.4}, {:.4}, {}",
             self.get_id(),
             self.available_amount(),
             self.held_amount(),

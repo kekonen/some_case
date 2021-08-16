@@ -1,11 +1,11 @@
 pub mod account;
 pub mod transaction;
 
+use account::{Account, error::AccountError};
 use transaction::{Transaction, TransactionType};
 
 use std::fmt;
 use std::collections::HashMap;
-use account::{Account, error::AccountError};
 
 
 #[derive(Debug, Clone)]
@@ -35,16 +35,12 @@ impl From<AccountError> for DBError {
     }
 }
 
+#[derive(Default)]
 pub struct Db {
     accounts: HashMap<u16, Account>,
 }
 
 impl Db {
-    pub fn new() -> Self {
-        Self {
-            accounts: HashMap::new(),
-        }
-    }
 
     fn add_account(&mut self, account: Account) {
         let id = account.get_id();
@@ -58,17 +54,15 @@ impl Db {
     pub fn process_new_transaction(&mut self, t: Transaction) -> Result<(), DBError> {
 
         if let Some(account) = self.get_account_mut(&t.client()) {
-            account.execute_transaction(t).or_else::<DBError, _>(|x| Err(x.into()))?;
+            account.execute_transaction(t).map_err::<DBError, _>(|x| x.into())?;
+            Ok(())
+        } else if t.get_type() == &TransactionType::Deposit {
+            let account = Account::empty(t.client());
+            account.execute_transaction(t).map_err::<DBError, _>(|x| x.into())?;
+            self.add_account(account);
             Ok(())
         } else {
-            if t.get_type() == &TransactionType::Deposit {
-                let account = Account::empty(t.client());
-                account.execute_transaction(t).or_else::<DBError, _>(|x| Err(x.into()))?;
-                self.add_account(account);
-                Ok(())
-            } else {
-                Err(DBError::AccountNotFound)
-            }
+            Err(DBError::AccountNotFound)
         }
         
     }
@@ -77,7 +71,7 @@ impl Db {
 
 impl fmt::Display for Db {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "client, available, held, total, locked\n")?;
+        writeln!(f, "client, available, held, total, locked")?;
         for account in self.accounts.values() {
             write!(f, "{}", account)?;
         }

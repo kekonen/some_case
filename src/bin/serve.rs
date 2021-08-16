@@ -1,7 +1,7 @@
 extern crate clap;
 use clap::{Arg, App, SubCommand};
 
-use case::{run_server, from_stdin};
+use case::{run_server, from_stdin, from_file};
 
 
 #[tokio::main]
@@ -11,6 +11,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .version("1.0")
         .author("Daniil N. <daniil.naumetc@gmail.com>")
         .about("Main implementation")
+        .arg(Arg::with_name("location")
+            .index(1))
         .arg(Arg::with_name("verbose")
             .short("v")
             .help("turns on verbose mode"))
@@ -40,7 +42,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         },
         _ => {
             let verbose = matches.is_present("verbose");
-            from_stdin(verbose);
+            if let Some(location) = matches.value_of("location") {
+                from_file(location, verbose)?;
+            } else {
+                from_stdin(verbose)?;
+            }
+            
             Ok(())
         },
     }
