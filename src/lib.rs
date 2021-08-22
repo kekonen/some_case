@@ -26,7 +26,10 @@ use chrono::prelude::*;
 pub fn from_stdin(verbose: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut db = Db::default();
     
-    let mut rdr = csv::Reader::from_reader(io::stdin());
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(b',')
+        .trim(csv::Trim::All)
+        .from_reader(io::stdin());
 
     for result in rdr.deserialize::<Transaction>() {
         match result {
@@ -52,7 +55,10 @@ pub fn from_file(location: &str, verbose: bool) -> Result<(), Box<dyn std::error
     
     let file = File::open(location)?;
 
-    let mut rdr = csv::Reader::from_reader(file);
+    let mut rdr = csv::ReaderBuilder::new()
+        .delimiter(b',')
+        .trim(csv::Trim::All)
+        .from_reader(file);
 
     for result in rdr.deserialize::<Transaction>() {
         match result {
