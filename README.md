@@ -24,7 +24,8 @@ There are 2 implementations (`src/bin/serve.rs`):
  1. File/stdin implementation. As requested it can read from a file, but also can consume from a stdin (I needed it to be tested by a fuzzer).
  2. Server implementation. Basic, warp async server. I tinkered a bit with the implementation of it, and it seems like very efficiant way. Though, I would play more with sharding.
 
-Server accepts JSON (`content-type` must be `application/json`) or separate CSVs (one value per request) to root `/`. JSON could be passed normally as a single value. CSV are passed also as single values, but without header and should be more like every request would represent one line of a CSV, with hardcoded header: `vec!["type", "client", "tx", "amount"]`
+Server accepts POST JSON (`content-type` must be `application/json`) or separate CSVs (one value per request) to root `/`. JSON could be passed normally as a single value. CSV are passed also as single values, but without header and should be more like every request would represent one line of a CSV, with hardcoded header: `vec!["type", "client", "tx", "amount"]`. GET request to the root `/` will return the state (clients).
+
 
 
 I also wrote a fuzzer, with 2 implementations for both (`src/bin/fuzzer.rs`):
